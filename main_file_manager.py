@@ -1,6 +1,5 @@
 from tkinter import *
-from tkinter import ttk
-from tkinter import simpledialog, filedialog, messagebox as mb
+from tkinter import ttk, simpledialog, filedialog, messagebox as mb
 import os
 import shutil
 import pickle

@@ -2,7 +2,7 @@
 import socket
 
 bind_host = '127.0.0.1'
-bind_port = 7210
+bind_port = 5050
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((bind_host, bind_port))
