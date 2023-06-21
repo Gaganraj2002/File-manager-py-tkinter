@@ -36,7 +36,7 @@ To get started with the file manager application, follow these steps:
 1. Clone the repository to your local machine:
 
 ```
-git clone https://github.com/Gaganraj200/File-manager-py-tkinter.git
+git clone https://github.com/Gaganraj2002/File-manager-py-tkinter.git
 ```
 
 2. Install the required dependencies. Make sure you have Python and Tkinter installed on your system.
