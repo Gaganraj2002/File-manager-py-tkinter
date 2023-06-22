@@ -8,6 +8,20 @@ import socket
 import threading
 
 
+def get_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        # doesn't even have to be reachable
+        s.connect(('10.254.254.254', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
+
+
 class LoginWindow():
     def __init__(self, parent):
         self.window = parent
@@ -205,6 +219,7 @@ class Main_GUI():
         self.window = parent
         self.window.geometry("1200x400")
         self.window.title("File Manager")
+        self.details = details
         self.current_usr = details[0]
         self.current_usr_type = details[1]
         text_user = f"user:{self.current_usr}\ntype:{self.current_usr_type}"
@@ -214,6 +229,7 @@ class Main_GUI():
         self.usr_lbl = Label(self.window, text=text_user)
         self.usr_lbl.place(relx=0.85, rely=0.01)
         self.copy_move_frame(self.main_frame)
+        self.sharing_main_frame(self.main_frame)
         self.sensitiveFiles = self.get_sensitive_files()
         if self.current_usr_type == "admin":
             self.admin_panel = Frame(self.window)
@@ -256,6 +272,8 @@ class Main_GUI():
             mb.showinfo('Error', message_text)
 
     def copy_move(self):
+        if self.sharing_frame.winfo_manager():
+            self.sharing_frame.place_forget()
         self.cp_mv_frame.place_forget() if self.cp_mv_frame.winfo_manager(
         ) else self.cp_mv_frame.place(relx=0.5, rely=0.5, relheight=0.4, relwidth=0.5)
 
@@ -313,14 +331,43 @@ class Main_GUI():
         self.exit_btn = ttk.Button(top, text='Exit')
         self.exit_btn['command'] = exit
         self.share_file = ttk.Button(top, text="Share files")
+        self.share_file['command'] = self.sharing_frame_clicked
         self.logout_btn = ttk.Button(top, text="logout")
         self.logout_btn['command'] = self.logout
         self.place_btns()
+
+    def sharing_main_frame(self, top):
+        self.sharing_frame = Frame(top)
+        self.receive_btn = ttk.Button(self.sharing_frame, text='Receive')
+        self.send_btn = ttk.Button(self.sharing_frame, text='Send')
+        self.receive_btn['command'] = self.file_receiving_frame
+        self.send_btn['command'] = self.file_sending_frame
+        self.cancel_sf_btn = ttk.Button(self.sharing_frame, text='Cancel')
+        self.cancel_sf_btn['command'] = self.sharing_frame_clicked
+        self.receive_btn.place(relx=0.1, rely=0.0)
+        self.send_btn.place(relx=0.1, rely=0.3)
+        self.cancel_sf_btn.place(relx=0.1, rely=0.6)
+
+    def sharing_frame_clicked(self):
+        if self.cp_mv_frame.winfo_manager():
+            self.cp_mv_frame.place_forget()
+        self.sharing_frame.place_forget() if self.sharing_frame.winfo_manager(
+        ) else self.sharing_frame.place(relx=0.5, rely=0.5, relheight=0.4, relwidth=0.5)
 
     def logout(self):
         self.check_delete()
         self.forget_all()
         app = LoginWindow(root)
+
+    def file_receiving_frame(self):
+        self.check_delete()
+        self.forget_all()
+        app = FileSharingReceive(root, self.details)
+
+    def file_sending_frame(self):
+        self.check_delete()
+        self.forget_all()
+        app = FileSharingSend(root, self.details)
 
     def all_children(self):
         _list = self.window.winfo_children()
@@ -405,11 +452,12 @@ class Main_GUI():
         self.delete_file_btn.place(relx=0.3, rely=0.1)
         self.rename_file_btn.place(relx=0.5, rely=0.1)
         self.copy_move_btn.place(relx=0.7, rely=0.1)
-        self.create_folder_btn.place(relx=0.2, rely=0.3)
-        self.delete_folder_btn.place(relx=0.4, rely=0.3)
-        self.rename_folder_btn.place(relx=0.6, rely=0.3)
+        self.create_folder_btn.place(relx=0.15, rely=0.3)
+        self.delete_folder_btn.place(relx=0.35, rely=0.3)
+        self.rename_folder_btn.place(relx=0.55, rely=0.3)
         self.exit_btn.place(relx=0.45, rely=0.5)
-        self.logout_btn.place(relx=0.85, rely=0.25)
+        self.logout_btn.place(relx=0.85, rely=0.2)
+        self.share_file.place(relx=0.75, rely=0.3)
 
     def copy_move_frame(self, top):
         self.cp_mv_frame = Frame(top)
@@ -463,6 +511,243 @@ class Main_GUI():
     def dest_brows_clicked(self):
         path = filedialog.askdirectory()
         self.dest_path.set(path)
+
+
+class FileSharingSend():
+    def __init__(self, parent, details):
+        self.window = parent
+        self.details = details
+        self.window.geometry("1200x300")
+        self.window.title("Send File")
+        self.window.maxsize(1280, 800)
+        self.main_frame = Frame(self.window)
+        self.main_frame.place(relx=0, rely=0,
+                              relheight=1, relwidth=1)
+        self.send_addr = StringVar()
+        self.send_port = StringVar()
+        self.file_name = StringVar()
+        self.create_widgets(self.main_frame)
+        self.place_widgets()
+
+    def back_btn_clicked(self):
+        self.forget_all()
+        app = Main_GUI(root, self.details)
+
+    def create_widgets(self, top):
+        self.label = Label(top, text='File sharing:(send)')
+        self.send_btn = Button(top, text='Send')
+        self.send_btn['command'] = self.send_file
+        self.back_btn = Button(top, text='back')
+        self.back_btn['command'] = self.back_btn_clicked
+        self.address_lbl = Label(top, text='Address:')
+        self.addr_ent = Entry(top, textvariable=self.send_addr)
+        self.port_lbl = Label(top, text='port:')
+        self.port_ent = Entry(top, textvariable=self.send_port)
+        self.file_lbl = Label(top, text='Select file:')
+        self.file_ent = Entry(top, textvariable=self.file_name)
+        self.brows_btn = Button(top, text='Browse', command=self.brows)
+        self.progress = ttk.Progressbar(top, length=100)
+
+    def place_widgets(self):
+        self.progress.place(relx=0.1, rely=0.9, relwidth=0.8)
+        self.send_btn.place(relx=0.45, rely=0.8)
+        self.back_btn.place(relx=0.45, rely=0.65)
+        self.address_lbl.place(relx=0.35, rely=0.2)
+        self.addr_ent.place(relx=0.45, rely=0.2)
+        self.port_lbl.place(relx=0.35, rely=0.3)
+        self.port_ent.place(relx=0.45, rely=0.3)
+        self.label.place(relx=0.45, rely=0.01)
+        self.file_lbl.place(relx=0.35, rely=0.5)
+        self.file_ent.place(relx=0.45, rely=0.5)
+        self.brows_btn.place(relx=0.62, rely=0.5)
+
+    def send_file(self):
+        self.send_btn["state"] = "disabled"
+        addr = self.send_addr.get()
+        port = int(self.send_port.get())
+        filename = self.file_name.get()
+        t1 = threading.Thread(target=self.sendFileClient, args=(
+            addr, port, filename, self.progress, self.send_btn,))
+        t1.start()
+
+    def sendFileClient(self, host, port, fname, progress: ttk.Progressbar, btn: Button):
+        target_host = host
+        target_port = port
+        fname = fname  # "TEP.jpg"
+        with open(fname, 'rb') as f:
+            data = f.read()
+        frame = []
+        prev = 0
+        for i in range(4096, len(data), 4096):
+            frame.append(data[prev:i])
+            prev = i
+        frame.append(data[prev:])
+        fname = fname.split("/")[-1]
+        rep = ""
+        for i in fname:
+            if i == " ":
+                rep += "_"
+            else:
+                rep += i
+        fname = rep
+        meta_data = f"{len(frame)} {fname}"
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+            client.settimeout(5)
+            while True:
+                try:
+                    nBytes = client.sendto(meta_data.encode(),
+                                           (target_host, target_port))
+                    text, addr = client.recvfrom(4096)
+                    if text.decode() == "meta_ack":
+                        break
+                except TimeoutError as te:
+                    continue
+            total, count = 0, 0
+            # nameBytes = client.sendto(fname.encode(), (target_host, target_port))
+            for i in frame:
+                # sleep(0.1)
+                nBytes = client.sendto(i, (target_host, target_port))
+                text, addr = client.recvfrom(4096)
+                total += nBytes
+                percent = (total/len(data))*100
+                progress["value"] = percent
+        self.send_btn["state"] = "normal"
+
+    def brows(self):
+        name = filedialog.askopenfilename()
+        self.file_name.set(name)
+
+    def all_children(self):
+        _list = self.window.winfo_children()
+
+        for item in _list:
+            if item.winfo_children():
+                _list.extend(item.winfo_children())
+
+        return _list
+
+    def forget_all(self):
+        widget_list = self.all_children()
+        for item in widget_list:
+            try:
+                item.forget_grid()
+            except AttributeError:
+                item.destroy()
+
+
+class FileSharingReceive():
+    def __init__(self, parent, details):
+        self.window = parent
+        self.details = details
+        self.window.geometry("1200x300")
+        self.window.title("Receive File")
+        self.window.maxsize(1280, 800)
+        self.main_frame = Frame(self.window)
+        self.main_frame.place(relx=0, rely=0,
+                              relheight=1, relwidth=1)
+        self.receive_addr = StringVar()
+        self.receive_port = StringVar()
+        # self.file_name = StringVar()
+        self.IPAddr = get_ip()
+
+        self.create_widgets(self.main_frame)
+        self.place_widgets()
+
+    def create_widgets(self, top):
+        self.label = Label(top, text='File sharing:(receive)')
+        self.receive_btn = Button(top, text='Receive')
+        self.receive_btn['command'] = self.receive_clicked
+        self.back_btn = Button(top, text='Back')
+        self.back_btn['command'] = self.back_btn_clicked
+        self.address_lbl = Label(top, text='Address:')
+        self.addr_lb = Label(top, textvariable=self.receive_addr)
+        self.port_lbl = Label(top, text='port:')
+        self.port_ent = Entry(top, textvariable=self.receive_port)
+        self.label = Label(top, text="File Sharing:(Receive)")
+        self.shw_address = Label(top, text=self.IPAddr)
+        self.status = Label(top, text="")
+        # self.file_lbl = Label(top, text='Select file:')
+        # self.file_ent = Entry(top, textvariable=self.file_name)
+        # self.brows_btn = Button(top, text='Browse')
+        self.progress = ttk.Progressbar(top, length=100)
+
+    def back_btn_clicked(self):
+        self.forget_all()
+        app = Main_GUI(root, self.details)
+
+    def place_widgets(self):
+        self.progress.place(relx=0.1, rely=0.9, relwidth=0.8)
+        self.receive_btn.place(relx=0.45, rely=0.5)
+        self.back_btn.place(relx=0.45, rely=0.7)
+        self.address_lbl.place(relx=0.35, rely=0.2)
+        self.addr_lb.place(relx=0.45, rely=0.2)
+        self.port_lbl.place(relx=0.35, rely=0.3)
+        self.port_ent.place(relx=0.45, rely=0.3)
+        self.label.place(relx=0.45, rely=0.01)
+        self.shw_address.place(relx=0.45, rely=0.2)
+        self.status.place(relx=0.45, rely=0.8)
+        # self.file_lbl.place(relx=0.35, rely=0.5)
+        # self.file_ent.place(relx=0.45, rely=0.5)
+        # self.brows_btn.place(relx=0.62, rely=0.5)
+
+    def receive_clicked(self):
+        self.receive_btn["state"] = "disabled"
+        self.receive_btn["text"] = "Receiving..."
+        bind_host = self.IPAddr
+        bind_port = self.port_ent.get()
+        if bind_port.isnumeric():
+            print(bind_host, bind_port)
+            bind_port = int(bind_port)
+            t1 = threading.Thread(target=self.receiver, args=(
+                bind_host, bind_port,))
+            t1.start()
+        else:
+            self.receive_btn["state"] = "normal"
+            mb.showerror(
+                "Port Error", "Port entered is not a number or its blank")
+
+    def receiver(self, host, port):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, port))
+        meta_data, addr = sock.recvfrom(4096)
+        meta_ack = sock.sendto('meta_ack'.encode(), (addr[0], addr[1]))
+        data = b""
+        meta_data = meta_data.decode()
+        print(meta_data, addr[0], ':', addr[1])
+        for i in range(int(meta_data.split()[0])):
+            text, addr = sock.recvfrom(4096)
+            data += text
+            nBytes = sock.sendto('ack'.encode(), (addr[0], addr[1]))
+            percent = (i/(int(meta_data.split()[0])-1))*100
+            self.progress["value"] = percent
+        nBytes = sock.sendto('ack'.encode(), (addr[0], addr[1]))
+
+        print(len(data))
+
+        fname = "test_"+meta_data.split()[-1]
+        with open(fname, 'wb') as t:
+            t.write(data)
+        print(f"{fname} file is received")
+        self.receive_btn["text"] = "Receive"
+        self.receive_btn["state"] = "normal"
+
+    def all_children(self):
+        _list = self.window.winfo_children()
+
+        for item in _list:
+            if item.winfo_children():
+                _list.extend(item.winfo_children())
+
+        return _list
+
+    def forget_all(self):
+        widget_list = self.all_children()
+        for item in widget_list:
+            try:
+                item.forget_grid()
+            except AttributeError:
+                item.destroy()
 
 
 if __name__ == "__main__":
